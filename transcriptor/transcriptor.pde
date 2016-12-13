@@ -1,5 +1,3 @@
-import java.util.Map;
-
 /* 
 
   ** VIDEO AND AUDIO TRANSCRIPTOR **
@@ -29,32 +27,49 @@ import java.nio.file.Files;
 import java.nio.file.attribute.*;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.concurrent.TimeUnit;
+import java.text.SimpleDateFormat;
+import java.util.Map;
 
+
+// GLOBAL VARIABLES
 Movie myMovie;
 Movie mov;
 SDrop drop;
 ControlP5 cp5;
 String movieFile;
-
-// GLOBAL VARIABLES
 int newFrame;
-boolean paused = false;
+boolean paused = true;
 int myColor = color(255);
 int c1,c2;
 float n,n1;
 FileTime creationTime;
 int currentFrame=0;
 float frameSize = 0;
+float movDuration = 0;
+float movTime = 0;
+int movFrames = 0;
+float frameDuration;
 
+PrintWriter output;
+
+Table table;
+int movieEventsTimes [] = {0};
+String movieEvents [] = {"0"};
+String fileName;
+SimpleDateFormat df = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SSS");
+ 
 void setup (){
   
     size(640, 640);
     drop = new SDrop(this);
+   
  
     background(0);
     cp5 = new ControlP5(this);
     uiSetup();
-    selectInput("Select a file to process:", "fileSelected");
+    
+    selectInput("Select a file to process:", "selectFile");
 
     if(mov != null){
       
@@ -64,54 +79,24 @@ void setup (){
     mov.play();
     mov.jump(0);
     mov.pause();
-    }
-
-}
-
-void fileSelected(File selection) {
-  if (selection == null) {
-    println("Window was closed or the user hit cancel.");
-  } else {
-    //println("User selected " + selection.getAbsolutePath());
-    if(selection.isFile()) {
-      Path path = Paths.get(selection.getAbsolutePath());
-      BasicFileAttributes attr;
-      try {
-         attr = Files.readAttributes(path, BasicFileAttributes.class);
-         System.out.println("Creation time: " + attr.creationTime());     
-         creationTime = attr.creationTime();
-         
-       
-     
-    } catch (IOException e) {
-     System.out.println("oops un error! " + e.getMessage());
-    }
-      
-    movieFile = selection.getAbsolutePath();
-    mov = new Movie(this, movieFile);
+    frameDuration = 1.0 / mov.frameRate;
     
-     frameSize = width/mov.duration();
-     print( frameSize );
-     
-    println(getLength()+" "+ mov.duration() +" "+mov.time());
-    
-    // float md = mov.duration();
-  //oat mt = mov.time();
-
-    // Pausing the video at the first frame. 
-    mov.play();
-    mov.jump(0);
-    mov.pause();
-      
-    }
    
-  }
-  
- 
+    }
+
 }
 
+void createFile(){
+    String outputName = "data/"+fileName+"_events.csv";
+    output = createWriter(outputName); 
+      
+     // setup header
+     logEvents("eventSecondFromStart, timestamp, eventName");
+     logEvents("0, "+ df.format(creationTime.to(TimeUnit.MILLISECONDS))+", Start of File");
+}
 void movieEvent(Movie m) {
   m.read();
+  frameDuration = 1.0 / mov.frameRate;
 }
 
 void draw() {
@@ -119,7 +104,7 @@ void draw() {
   if(mov != null){
  
   image(mov, 0, 50, width, 50+width/2);
-  
+  frameDuration = 1.0 / mov.frameRate;
   fill(255);
   text(getFrame() + " / " + (getLength() - 1), 10, 30);
   
@@ -131,10 +116,9 @@ void draw() {
     rect(0,40, mov.time()*(width/mov.duration()), 50);
   }
 
-   //FileTime FrameTime =  from(
-   //creationTime.toMillis() + getFrame());
-  int currentFrameTime = getFrame();
-  text(creationTime.toMillis() + getFrame()+" / ", 100, 30);
+  long  timestamp = (long) (creationTime.to(TimeUnit.MILLISECONDS))+(long)((getFrame()*frameDuration)*1000);
+  String dateCreated = df.format(timestamp);
+  text(dateCreated+"  ", 100, 30);
   
   if(paused){
     mov.pause();
@@ -142,10 +126,17 @@ void draw() {
     mov.play();
   }
   }
+  
+  //for(int i=0, i< length(movieEvents), i++){
+  //}
+  
 }
 
 void keyPressed() {
-   println(key);
+  frameDuration = 1.0 / mov.frameRate;
+  
+  println(getFrame()*frameDuration);
+  println(key);
    
    if (key == 'p') {
       if(paused){
@@ -154,6 +145,10 @@ void keyPressed() {
         paused = true;
       }
     }
+    
+  if (key == 'r') {
+      restart();
+    }  
     
   if (key == CODED) {
     
@@ -171,14 +166,14 @@ void keyPressed() {
 }
   
 int getFrame() {    
-  return ceil(mov.time() * 30) - 1;
+  return ceil(mov.time() * mov.frameRate) - 1;
 }
 
 void setFrame(int n) {
   mov.play();
     
   // The duration of a single frame:
-  float frameDuration = 1.0 / mov.frameRate;
+  frameDuration = 1.0 / mov.frameRate;
     
   // We move to the middle of the frame by adding 0.5:
   float where = (n + 0.5) * frameDuration; 
@@ -201,10 +196,38 @@ int getLength() {
 
 
 public void controlEvent(ControlEvent theEvent) {
-  println(theEvent.getController().getName());
-  n = 0;
-  
-  if (theEvent.getController().getName().equals("Route A")) {
-       println(getLength()+" "+ mov.duration() +" "+mov.time());
+  //println(theEvent.getController().getName());
+ 
+  if(mov != null){
+    long  timestamp = (long) (creationTime.to(TimeUnit.MILLISECONDS))+(long)((getFrame()*frameDuration)*1000);
+    String dateCreated = df.format(timestamp);
+ 
+    logEvents((String) (mov.time()+", "+ dateCreated + ", "+ theEvent.getController().getName()));
+    
+     if (theEvent.getController().getName().equals("Restart")) {
+       restart();
     }
+  }
+  //if (theEvent.getController().getName().equals("Trial Start")) {
+  //     //println(getLength()+" "+ mov.duration() +" "+mov.time());
+  //}
+}
+
+void restart (){
+  mov.jump(0);
+  mov.play();
+}
+
+void logEvents (String thisLog){
+  println(thisLog);
+  output.println(thisLog);
+  output.flush(); // Writes the remaining data to the file
+}
+
+
+void exit() {
+  //put code to run on exit here
+  output.flush();  // Writes the remaining data to the file
+  output.close();  // Finishes the file
+  super.exit();
 }
